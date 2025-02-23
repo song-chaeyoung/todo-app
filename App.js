@@ -15,20 +15,31 @@ import { theme } from "./color";
 import { useEffect, useState } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import FontAwesome from "@expo/vector-icons/FontAwesome";
+import Checkbox from "expo-checkbox";
 
 const STORAGE_KEY = "@toDos";
+const STORAGE_VIEW_KEY = "@toDos_View";
 
 export default function App() {
   const [working, setWorking] = useState(true);
-  const [text, setText] = useState("");
+  const [editingId, setEditingId] = useState(null);
   const [toDos, setToDos] = useState({});
+
+  const [input, setInput] = useState({
+    text: "",
+    working: working,
+    done: false,
+  });
 
   const travel = () => setWorking(false);
   const work = () => setWorking(true);
 
   const onChangeText = (e) => {
     // 이벤트 자체가 텍스트임
-    setText(e);
+    setInput((prev) => ({
+      ...prev,
+      text: e,
+    }));
   };
 
   const loadToDos = async () => {
@@ -41,25 +52,48 @@ export default function App() {
     }
   };
 
+  const loadsView = async () => {
+    const view = await AsyncStorage.getItem(STORAGE_VIEW_KEY);
+    setWorking(JSON.parse(view));
+  };
+
   useEffect(() => {
     loadToDos();
+    loadsView();
   }, []);
+
+  useEffect(() => {
+    const saveView = async () => {
+      await AsyncStorage.setItem(STORAGE_VIEW_KEY, JSON.stringify(working));
+    };
+
+    saveView();
+  }, [working]);
 
   const saveToDo = async (toSave) => {
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   };
 
   const addTodo = async () => {
-    if (text === "") return;
+    if (input.text === "") return;
     // const newToDos = Object.assign({}, toDos, {
     //   [Date.now()]: { text, work: working },
     // });
-    const newToDos = { ...toDos, [Date.now()]: { text, working } };
-    console.log(newToDos);
+
+    if (!working)
+      setInput((prev) => ({
+        ...prev,
+        working: e,
+      }));
+
+    const newToDos = { ...toDos, [Date.now()]: input };
 
     setToDos(newToDos);
     await saveToDo(newToDos);
-    setText("");
+    setInput((prev) => ({
+      ...prev,
+      text: "",
+    }));
   };
 
   const deleteToDo = async (key) => {
@@ -99,7 +133,7 @@ export default function App() {
       <TextInput
         style={styles.input}
         placeholder={working ? "Add To Do" : "Where do you want to go?"}
-        value={text}
+        value={input.text}
         onChangeText={onChangeText}
         onSubmitEditing={addTodo}
         returnKeyType="Done"
@@ -114,16 +148,79 @@ export default function App() {
           Object.keys(toDos).map((key) =>
             toDos[key].working === working ? (
               <View style={styles.toDo} key={key}>
-                <Text style={styles.toDoText}>{toDos[key].text}</Text>
-                <TouchableOpacity onPress={() => deleteToDo(key)}>
-                  <Text>
+                {editingId === key ? (
+                  <TextInput
+                    style={styles.toDoTextEdit}
+                    value={toDos[key].text}
+                    onChangeText={(e) => {
+                      const newToDos = {
+                        ...toDos,
+                        [key]: {
+                          ...toDos[key],
+                          text: e,
+                        },
+                      };
+                      setToDos(newToDos);
+                      saveToDo(newToDos);
+                    }}
+                    onSubmitEditing={async () => {
+                      await saveToDo(toDos);
+                      setEditingId(null);
+                    }}
+                    onBlur={() => setEditingId(null)}
+                    autoFocus
+                  />
+                ) : (
+                  <Text
+                    style={[
+                      styles.toDoText,
+                      toDos[key].done && styles.toDoTextDone,
+                    ]}
+                  >
+                    {toDos[key].text}
+                  </Text>
+                )}
+                <View style={styles.toDoBtns}>
+                  <Checkbox
+                    value={toDos[key].done}
+                    onValueChange={async () => {
+                      const newToDos = {
+                        ...toDos,
+                        [key]: {
+                          ...toDos[key],
+                          done: !toDos[key].done,
+                        },
+                      };
+                      setToDos(newToDos);
+                      await saveToDo(newToDos);
+                    }}
+                    color={"#666"}
+                  />
+                  <TouchableOpacity
+                    onPress={() => {
+                      if (editingId === key) {
+                        setEditingId(null);
+                      } else {
+                        setEditingId(key);
+                      }
+                    }}
+                  >
                     <FontAwesome
-                      name="trash-o"
+                      name="pencil-square-o"
                       size={20}
                       color="rgba(255,255,255,0.5)"
                     />
-                  </Text>
-                </TouchableOpacity>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteToDo(key)}>
+                    <Text>
+                      <FontAwesome
+                        name="trash-o"
+                        size={20}
+                        color="rgba(255,255,255,0.5)"
+                      />
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : null
           )}
@@ -166,9 +263,23 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  toDoTextEdit: {
+    height: "auto",
+    backgroundColor: "white",
+    width: "70%",
+  },
+  toDoBtns: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
   toDoText: {
     color: "white",
     fontSize: 16,
     fontWeight: "500",
+  },
+  toDoTextDone: {
+    textDecorationLine: "line-through",
+    color: "#333",
   },
 });
